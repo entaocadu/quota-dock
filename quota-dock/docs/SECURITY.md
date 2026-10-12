@@ -13,3 +13,9 @@ As consultas HTTPS usam origens fixas, TLS e timeout; redirecionamentos HTTP sã
 Não há servidor próprio de telemetria. O backend se conecta diretamente aos provedores. Os limites são reportados pelo provedor, e qualquer dado anterior é identificado como antigo.
 
 As constantes OAuth do plugin Google e o client ID público do Codex são configurações públicas dos clientes; não são tokens ou segredos pessoais do usuário.
+
+## Publicação
+
+Ferramentas locais, backups, arquivos de login, bancos de dados e sessões são excluídos pelo `.gitignore`. Os pacotes publicados contêm somente o executável, a dependência WebView2 necessária e instruções de uso. Cada release inclui os hashes SHA-256 dos arquivos distribuídos. Screenshots de contas e resultados de consultas locais não são anexados às releases.
+
+Antes de tornar o repositório público, o histórico Git foi verificado com Gitleaks e comparado, sem registrar valores, com as credenciais e identidades locais. Os pacotes de distribuição também foram verificados. Nenhum token, segredo pessoal ou identidade de conta foi incluído nos arquivos publicados.

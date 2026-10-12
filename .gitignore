@@ -24,6 +24,20 @@ dll_map.json
 *.tmp
 *.log
 
+# Local audit tools, backups and release artifacts
+/.tools/
+/artifacts/
+*.zip
+
+# Local account stores and quota history
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+**/auth.json
+**/antigravity-accounts.json
+**/openai-sessions/
+
 # OS files
 .DS_Store
 Thumbs.db

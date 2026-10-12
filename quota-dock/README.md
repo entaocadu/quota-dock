@@ -2,6 +2,12 @@
 
 Monitor de quotas para Windows 10/11, feito com Tauri, Rust e React. A janela compacta desliza pela borda direita da tela e mostra as contas Google do OpenCode e os limites Codex das contas OpenAI.
 
+## Download
+
+Baixe o instalador ou o pacote portátil para Windows x64 na [release mais recente](https://github.com/entaocadu/quota-dock/releases/latest). No pacote portátil, mantenha `WebView2Loader.dll` ao lado de `QuotaDock.exe`. O aplicativo requer o runtime Microsoft WebView2.
+
+Os arquivos `SHA256SUMS.txt` de cada release permitem conferir a integridade do download. Credenciais, bancos de dados locais e backups não fazem parte dos pacotes.
+
 ## Uso
 
 - Clique no ícone da bandeja para abrir ou recolher. Clique fora ou pressione Esc para recolher. A entrada leva 230 ms, sem quique; reduzir animações no Windows remove o movimento.
