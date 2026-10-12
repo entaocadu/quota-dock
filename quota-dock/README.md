@@ -1,12 +1,14 @@
 # QuotaDock
 
-Monitor de quotas para Windows 10/11, feito com Tauri, Rust e React. A janela compacta abre pela bandeja, junto ao ícone, e mostra as contas Google do OpenCode e os limites Codex das contas OpenAI.
+Monitor de quotas para Windows 10/11, feito com Tauri, Rust e React. A janela compacta desliza pela borda direita da tela e mostra as contas Google do OpenCode e os limites Codex das contas OpenAI.
 
 ## Uso
 
-- Clique no ícone da bandeja para abrir ou ocultar. Clique fora ou pressione Esc para ocultar.
-- Arraste o título para mover. A próxima abertura volta para perto da bandeja.
-- O aplicativo inicia oculto, não ocupa a barra de tarefas e registra a inicialização com o Windows. Isso pode ser desativado em Ajustes.
+- Clique no ícone da bandeja para abrir ou recolher. Clique fora ou pressione Esc para recolher. A entrada leva 230 ms, sem quique; reduzir animações no Windows remove o movimento.
+- Arraste o título para mover. A próxima abertura volta para a borda direita do monitor.
+- Em Ajustes, **Fixar acima dos outros apps** mantém a janela acima e impede recolher ao clicar fora. Esc e o botão de recolher continuam funcionando.
+- **Mostrar na barra de tarefas** mantém a janela minimizada na barra ao recolher. Desativado, ela aparece somente na bandeja.
+- O aplicativo inicia minimizado e registra a inicialização com o Windows. Isso pode ser desativado em Ajustes. Preferências e sessões são mantidas ao atualizar.
 - Atualiza ao abrir e automaticamente a cada minuto, inclusive enquanto a janela está oculta. O botão Atualizar força uma nova consulta.
 - Clique na fonte abaixo de cada conta para ver horários de renovação e leituras por modelo.
 - A altura acompanha o conteúdo até 640 pixels lógicos, respeitando a área útil do monitor; listas maiores usam rolagem. Não há quantidade fixa de contas. As consultas usam até seis conexões simultâneas por provedor, com renovação independente por conta.

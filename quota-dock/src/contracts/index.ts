@@ -1,31 +1,32 @@
-export type ProviderId = 'openai-codex' | 'google-antigravity' | 'opencode-local';
+export type ProviderId =
+  "openai-codex" | "google-antigravity" | "opencode-local";
 
 export type OriginKind =
-  | 'opencode_openai_usage'
-  | 'codex_local_usage'
-  | 'openai_quota_login'
-  | 'codex_app_server'
-  | 'codex_web_manual'
-  | 'openai_undocumented_opt_in'
-  | 'antigravity_plugin_cache'
-  | 'antigravity_private_opt_in'
-  | 'opencode_stats';
+  | "opencode_openai_usage"
+  | "codex_local_usage"
+  | "openai_quota_login"
+  | "codex_app_server"
+  | "codex_web_manual"
+  | "openai_undocumented_opt_in"
+  | "antigravity_plugin_cache"
+  | "antigravity_private_opt_in"
+  | "opencode_stats";
 
 export type Availability =
-  | 'ok'
-  | 'partial'
-  | 'stale'
-  | 'disabled'
-  | 'not_configured'
-  | 'not_installed'
-  | 'unauthorized_scope'
-  | 'forbidden'
-  | 'rate_limited'
-  | 'offline'
-  | 'network_error'
-  | 'source_changed'
-  | 'no_data'
-  | 'unknown_error';
+  | "ok"
+  | "partial"
+  | "stale"
+  | "disabled"
+  | "not_configured"
+  | "not_installed"
+  | "unauthorized_scope"
+  | "forbidden"
+  | "rate_limited"
+  | "offline"
+  | "network_error"
+  | "source_changed"
+  | "no_data"
+  | "unknown_error";
 
 export interface QuotaSnapshot {
   schemaVersion: number;
@@ -109,6 +110,7 @@ export interface PublicSettings {
   notifyThreshold10: boolean;
   notifyThreshold0: boolean;
   pinned: boolean;
+  showInTaskbar: boolean;
 }
 
 export interface SafeSettingsPatch {
@@ -121,4 +123,5 @@ export interface SafeSettingsPatch {
   notifyThreshold10?: boolean;
   notifyThreshold0?: boolean;
   pinned?: boolean;
+  showInTaskbar?: boolean;
 }

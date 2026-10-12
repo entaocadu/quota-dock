@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-10-12
+
+- Entrada de 230 ms e saída de 170 ms pela borda direita, com movimento suave e suporte à preferência de reduzir animações do Windows.
+- Janela alinhada ao centro da borda direita do monitor; mantém altura automática, rolagem e arrasto pelo título.
+- Ajuste para fixar acima dos outros apps e manter aberto ao perder o foco. Esc e o botão de recolher continuam disponíveis.
+- Ajuste para barra de tarefas ou apenas bandeja. No modo barra, recolher minimiza; restaurar reapresenta a janela.
+- Preferências antigas preservadas na migração; transições repetidas descartam eventos antigos sem ocultar uma janela recém-aberta.
+
 ## 0.2.0 — 2026-10-12
 
 - Popup de 360 pixels de largura em preto carbono, barras monocromáticas e altura automática; listas grandes usam rolagem.

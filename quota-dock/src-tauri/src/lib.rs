@@ -139,6 +139,12 @@ fn update_settings(
     app: tauri::AppHandle,
     patch: SafeSettingsPatch,
 ) -> Result<PublicSettings, String> {
+    if patch
+        .poll_interval_mins
+        .is_some_and(|v| ![1, 2, 5, 10].contains(&v))
+    {
+        return Err("Intervalo inválido".into());
+    }
     let conn = db()?;
     let mut s = load_settings(&conn).map_err(|_| "Falha ao ler ajustes")?;
     if let Some(start) = patch.start_with_windows {
@@ -156,15 +162,43 @@ fn update_settings(
         }
         s.poll_interval_mins = interval;
     }
-    save_settings(&conn, &s).map_err(|_| "Falha ao salvar ajustes")?;
+    let previous = s.clone();
+    if let Some(pinned) = patch.pinned {
+        s.pinned = pinned;
+    }
+    if let Some(taskbar) = patch.show_in_taskbar {
+        s.show_in_taskbar = taskbar;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        tray::apply_preferences(&window, s.pinned, s.show_in_taskbar)
+            .map_err(|_| "Falha ao ajustar comportamento da janela")?;
+    }
+    if save_settings(&conn, &s).is_err() {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = tray::apply_preferences(&window, previous.pinned, previous.show_in_taskbar);
+        }
+        return Err("Falha ao salvar ajustes".into());
+    }
     app.state::<QuotaService>()
         .poll_mins
         .store(s.poll_interval_mins, Ordering::Relaxed);
     Ok(s)
 }
 #[tauri::command]
-fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.hide().map_err(|_| "Falha ao ocultar janela".into())
+fn hide_window(window: tauri::WebviewWindow) {
+    tray::hide_flyout(&window, false);
+}
+#[tauri::command]
+fn get_window_state(app: tauri::AppHandle) -> tray::WindowState {
+    tray::window_state(&app)
+}
+#[tauri::command]
+fn show_flyout_ready(window: tauri::WebviewWindow, token: u32) -> Result<bool, String> {
+    tray::show_ready(&window, token).map_err(|_| "Falha ao abrir janela".into())
+}
+#[tauri::command]
+fn finish_hide(window: tauri::WebviewWindow, token: u32) -> Result<bool, String> {
+    tray::finish_hide(&window, token).map_err(|_| "Falha ao recolher janela".into())
 }
 #[tauri::command]
 fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -204,6 +238,7 @@ pub fn run() {
             Some(vec!["--background"]),
         ))
         .manage(QuotaService::default())
+        .manage(tray::FlyoutState::default())
         .setup(|app| {
             tray::setup_tray(app.handle())?;
             let conn = db().map_err(std::io::Error::other)?;
@@ -233,18 +268,22 @@ pub fn run() {
                 .poll_mins
                 .store(settings.poll_interval_mins, Ordering::Relaxed);
             if let Some(window) = app.get_webview_window("main") {
+                tray::apply_preferences(&window, settings.pinned, settings.show_in_taskbar)?;
                 let win = window.clone();
                 window.on_window_event(move |event| match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
-                        tray::hide_flyout(&win);
+                        tray::hide_flyout(&win, false);
                     }
-                    tauri::WindowEvent::Focused(false) => tray::hide_flyout(&win),
+                    tauri::WindowEvent::Focused(false) => tray::hide_on_blur(&win),
+                    tauri::WindowEvent::Focused(true) => tray::restore_from_taskbar(&win),
                     _ => {}
                 });
             }
             if std::env::args().any(|a| a == "--show") {
                 let _ = tray::show_flyout(app.handle(), None);
+            } else if let Some(window) = app.get_webview_window("main") {
+                tray::start_minimized(&window)?;
             }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -271,6 +310,9 @@ pub fn run() {
             get_settings,
             update_settings,
             hide_window,
+            get_window_state,
+            show_flyout_ready,
+            finish_hide,
             start_dragging,
             get_history,
             clear_history,

@@ -66,6 +66,34 @@ export const SettingsView: React.FC = () => {
         <>
           <label className="setting-row">
             <span>
+              Fixar acima dos outros apps
+              <small>Continua aberto ao clicar fora. Esc ainda recolhe.</small>
+            </span>
+            <input
+              type="checkbox"
+              disabled={saving}
+              checked={settings.pinned}
+              onChange={(e) => void update({ pinned: e.target.checked })}
+            />
+          </label>
+          <label className="setting-row">
+            <span>
+              Mostrar na barra de tarefas
+              <small>
+                {settings.showInTaskbar
+                  ? "Ao recolher, fica minimizado na barra."
+                  : "Aparece somente na bandeja de apps ocultos."}
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              disabled={saving}
+              checked={settings.showInTaskbar}
+              onChange={(e) => void update({ showInTaskbar: e.target.checked })}
+            />
+          </label>
+          <label className="setting-row">
+            <span>
               Iniciar com o Windows
               <small>Em segundo plano, apenas na bandeja.</small>
             </span>
@@ -144,8 +172,8 @@ export const SettingsView: React.FC = () => {
             )}
           </div>
           <p className="source-note">
-            Arraste o título para mover a janela. Ao reabrir, ela volta para
-            perto da bandeja.
+            Arraste o título para mover a janela. Ao reabrir, ela volta à
+            borda direita da tela.
           </p>
         </>
       )}

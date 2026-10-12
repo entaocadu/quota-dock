@@ -84,6 +84,17 @@ summary:focus-visible {
   border-radius: 12px;
   overflow: hidden;
 }
+.window-container[data-motion="hidden"] {
+  transform: translateX(calc(100% + 16px));
+  pointer-events: none;
+}
+.window-container[data-motion="opening"],
+.window-container[data-motion="closing"] {
+  will-change: transform;
+}
+.window-container[data-motion="closing"] {
+  pointer-events: none;
+}
 .header {
   height: 46px;
   flex-shrink: 0;

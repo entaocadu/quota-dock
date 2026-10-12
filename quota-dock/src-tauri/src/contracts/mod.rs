@@ -134,6 +134,7 @@ pub struct SanitizedDiagnostics {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct PublicSettings {
     pub start_with_windows: bool,
     pub theme: String,
@@ -144,6 +145,7 @@ pub struct PublicSettings {
     pub notify_threshold_10: bool,
     pub notify_threshold_0: bool,
     pub pinned: bool,
+    pub show_in_taskbar: bool,
 }
 
 impl Default for PublicSettings {
@@ -158,6 +160,7 @@ impl Default for PublicSettings {
             notify_threshold_10: false,
             notify_threshold_0: false,
             pinned: false,
+            show_in_taskbar: false,
         }
     }
 }
@@ -174,4 +177,5 @@ pub struct SafeSettingsPatch {
     pub notify_threshold_10: Option<bool>,
     pub notify_threshold_0: Option<bool>,
     pub pinned: Option<bool>,
+    pub show_in_taskbar: Option<bool>,
 }

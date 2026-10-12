@@ -22,4 +22,4 @@ cargo build --manifest-path src-tauri/Cargo.toml --example verify_sources
 
 O exemplo valida as fontes configuradas e mostra apenas snapshots públicos. Não copie resultados pessoais para commits.
 
-Inicialização: sem argumentos ou com --background, fica oculto. --show abre o popup para uma verificação manual. O menu Sair encerra o processo; X, Esc e perda de foco apenas ocultam a janela.
+Inicialização: sem argumentos ou com --background, fica recolhido (oculto na bandeja ou minimizado na barra, conforme o ajuste). --show abre o popup para uma verificação manual. O menu Sair encerra o processo; X e Esc recolhem. Perda de foco recolhe somente quando Fixar está desativado.

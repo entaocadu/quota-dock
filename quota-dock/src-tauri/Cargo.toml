@@ -1,6 +1,6 @@
 [package]
 name = "quota-dock"
-version = "0.2.0"
+version = "0.3.0"
 description = "Monitor independente de limites e quotas de IA para Windows"
 authors = ["QuotaDock Team"]
 edition = "2021"

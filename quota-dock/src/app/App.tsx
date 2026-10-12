@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Header } from "../components/Header";
 import { QuotaCard } from "../components/QuotaCard";
 import { SettingsView } from "../components/SettingsView";
+import { FlyoutMotion } from "./flyoutMotion";
 import type { QuotaSnapshot } from "../contracts";
 export const App: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false),
@@ -12,6 +13,12 @@ export const App: React.FC = () => {
     [error, setError] = useState<string | null>(null),
     [lastAttempt, setLastAttempt] = useState<string | null>(null);
   const loading = useRef(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const motion = useRef<FlyoutMotion | null>(null);
+  const [windowPreferences, setWindowPreferences] = useState({
+    pinned: false,
+    showInTaskbar: false,
+  });
   const content = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = content.current;
@@ -29,6 +36,52 @@ export const App: React.FC = () => {
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
+    };
+  }, []);
+  useEffect(() => {
+    if (!panel.current) return;
+    const controller = new FlyoutMotion(
+      panel.current,
+      (command, args) => invoke<boolean>(command, args),
+      () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    );
+    motion.current = controller;
+    let disposed = false;
+    const registrations = [
+      listen<number>("flyout-opening", (e) => {
+        setSettingsOpen(false);
+        void controller.open(e.payload).catch(() => {});
+      }),
+      listen<number>("flyout-closing", (e) => {
+        void controller.close(e.payload).catch(() => {});
+      }),
+      listen<typeof windowPreferences>("window-preferences", (e) =>
+        setWindowPreferences(e.payload),
+      ),
+    ];
+    // Query after listeners are installed, so an opening request during page
+    // startup cannot be lost between event subscription and the first snapshot.
+    void Promise.all(registrations)
+      .then(async () => {
+        const state = await invoke<{
+          openingToken: number | null;
+          pinned: boolean;
+          showInTaskbar: boolean;
+        }>("get_window_state");
+        if (disposed) return;
+        setWindowPreferences({
+          pinned: state.pinned,
+          showInTaskbar: state.showInTaskbar,
+        });
+        if (state.openingToken !== null)
+          void controller.open(state.openingToken).catch(() => {});
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      controller.cancel();
+      motion.current = null;
+      registrations.forEach((p) => void p.then((unlisten) => unlisten()));
     };
   }, []);
   const loadOverview = useCallback(async (force = false) => {
@@ -73,7 +126,7 @@ export const App: React.FC = () => {
         );
       }),
       listen("trigger-refresh", () => void loadOverview(true)),
-      listen("flyout-opened", () => {
+      listen("flyout-opening", () => {
         setSettingsOpen(false);
         void loadOverview();
       }),
@@ -86,12 +139,13 @@ export const App: React.FC = () => {
     };
   }, [loadOverview]);
   return (
-    <div className="window-container">
+    <div ref={panel} className="window-container" data-motion="hidden">
       <Header
         refreshing={refreshing}
         onRefresh={() => void loadOverview(true)}
         settingsOpen={settingsOpen}
         onSettings={() => setSettingsOpen((v) => !v)}
+        onDragStart={() => motion.current?.cancel()}
       />
       <main className="content-body" aria-busy={refreshing}>
         <div ref={content} className="content-inner">
@@ -129,7 +183,13 @@ export const App: React.FC = () => {
               ? "Consulta " + lastAttempt
               : "Aguardando consulta"}
         </span>
-        <span>Clique fora para ocultar</span>
+        <span>
+          {windowPreferences.pinned
+            ? "Fixado · Esc para recolher"
+            : windowPreferences.showInTaskbar
+              ? "Clique fora para minimizar"
+              : "Clique fora para ocultar"}
+        </span>
       </footer>
     </div>
   );

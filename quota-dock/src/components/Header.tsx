@@ -6,13 +6,15 @@ export const Header: React.FC<{
   onRefresh: () => void;
   settingsOpen: boolean;
   onSettings: () => void;
-}> = ({ refreshing, onRefresh, settingsOpen, onSettings }) => (
+  onDragStart: () => void;
+}> = ({ refreshing, onRefresh, settingsOpen, onSettings, onDragStart }) => (
   <header className="header">
     <div
       className="header-title-group"
       onMouseDown={(e) => {
         if (e.button === 0) {
           e.preventDefault();
+          onDragStart();
           void invoke("start_dragging");
         }
       }}

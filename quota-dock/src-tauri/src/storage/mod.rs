@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use rusqlite::{params, Connection};
 use crate::contracts::{PublicSettings, QuotaSnapshot};
+use rusqlite::{params, Connection};
+use std::path::PathBuf;
 
 pub fn get_app_db_path() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
@@ -63,9 +63,8 @@ pub fn save_snapshot(conn: &Connection, snapshot: &QuotaSnapshot) -> Result<(), 
 }
 
 pub fn get_history(conn: &Connection, limit: usize) -> Result<Vec<QuotaSnapshot>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT json_sanitized FROM snapshots ORDER BY id DESC LIMIT ?1"
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT json_sanitized FROM snapshots ORDER BY id DESC LIMIT ?1")?;
     let rows = stmt.query_map(params![limit as i64], |row| {
         let json_str: String = row.get(0)?;
         Ok(json_str)
@@ -112,6 +111,30 @@ pub fn save_settings(conn: &Connection, settings: &PublicSettings) -> Result<(),
 mod tests {
     use super::*;
     use crate::contracts::{Availability, OriginKind, ProviderId};
+
+    #[test]
+    fn legacy_settings_keep_preferences_when_new_window_options_are_added() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let mut old = serde_json::to_value(PublicSettings::default()).unwrap();
+        old.as_object_mut().unwrap().remove("showInTaskbar");
+        old["startWithWindows"] = false.into();
+        old["pollIntervalMins"] = 5.into();
+        old["pinned"] = true.into();
+        conn.execute(
+            "INSERT INTO settings(key,value) VALUES('public_settings',?1)",
+            [old.to_string()],
+        )
+        .unwrap();
+        let loaded = load_settings(&conn).unwrap();
+        assert!(!loaded.start_with_windows);
+        assert_eq!(loaded.poll_interval_mins, 5);
+        assert!(loaded.pinned);
+        assert_eq!(
+            serde_json::to_value(loaded).unwrap()["showInTaskbar"],
+            false
+        );
+    }
 
     #[test]
     fn test_storage_lifecycle_in_memory() {
