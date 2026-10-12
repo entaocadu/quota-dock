@@ -1,10 +1,8 @@
-use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-use crate::contracts::{
-    Availability, ModelQuota, OriginKind, ProviderId, QuotaSnapshot,
-};
+use crate::contracts::{Availability, ModelQuota, OriginKind, ProviderId, QuotaSnapshot};
 use crate::quota::normalization::{epoch_ms_to_iso, to_remaining_from_fraction};
 use crate::security::masking::{hash_account_key, mask_email};
 
@@ -102,9 +100,16 @@ pub fn parse_antigravity_accounts(
 
     let mut snapshots = Vec::new();
 
-    for acc in accounts {
-        let email_raw = acc.email.unwrap_or_else(|| "conta@google.com".to_string());
-        let label = mask_email(&email_raw);
+    for (index, acc) in accounts.into_iter().enumerate() {
+        let email_raw = acc
+            .email
+            .clone()
+            .unwrap_or_else(|| format!("google-account-{}", index));
+        let label = acc
+            .email
+            .as_deref()
+            .map(mask_email)
+            .unwrap_or_else(|| format!("Conta Google {}", index + 1));
         let key = hash_account_key(&email_raw);
 
         let mut warnings = Vec::new();
@@ -118,7 +123,7 @@ pub fn parse_antigravity_accounts(
         };
 
         // Determine staleness
-        let status = if updated_at_ms <= 0 {
+        let mut status = if updated_at_ms <= 0 {
             warnings.push("Não há snapshot local registrado pelo plugin.".to_string());
             Availability::NoData
         } else {
@@ -147,7 +152,7 @@ pub fn parse_antigravity_accounts(
             for m_key in &model_keys {
                 if let Some(q) = quota_map.get(*m_key) {
                     let display_name = match *m_key {
-                        "gemini-flash" => "Gemini 3.8 Flash",
+                        "gemini-flash" => "Gemini Flash",
                         "gemini-pro" => "Gemini Pro",
                         "claude" => "Claude (Antigravity)",
                         _ => *m_key,
@@ -165,7 +170,7 @@ pub fn parse_antigravity_accounts(
                         remaining_percent: to_remaining_from_fraction(q.remaining_fraction),
                         reset_at: q.reset_time.clone(),
                         group_label: Some(group_label.to_string()),
-                        source_exact: true,
+                        source_exact: false,
                     });
                 }
             }
@@ -173,6 +178,13 @@ pub fn parse_antigravity_accounts(
 
         if models.is_empty() && status != Availability::NoData {
             warnings.push("Nenhum modelo com quota encontrado no snapshot.".to_string());
+        }
+
+        if !models.iter().any(|m| m.remaining_percent.is_some()) {
+            status = Availability::NoData;
+        }
+        if acc.enabled == Some(false) {
+            status = Availability::Disabled;
         }
 
         snapshots.push(QuotaSnapshot {
@@ -255,6 +267,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cache_does_not_invent_model_versions_or_valid_quota() {
+        let json = r#"{"accounts":[{"email":"a@test.com","cachedQuotaUpdatedAt":1791752000000,"cachedQuota":{"gemini-flash":{"remainingFraction":null}}}]}"#;
+        let s = parse_antigravity_accounts(json, 1791752000001).unwrap();
+        assert_eq!(s[0].status, Availability::NoData);
+        assert_eq!(s[0].models[0].display_name, "Gemini Flash");
+    }
+
+    #[test]
+    fn empty_recent_cache_is_not_confirmed() {
+        let json = r#"{"accounts":[{"email":"a@test.com","cachedQuotaUpdatedAt":1791752000000,"cachedQuota":{}}]}"#;
+        assert_eq!(
+            parse_antigravity_accounts(json, 1791752000001).unwrap()[0].status,
+            Availability::NoData
+        );
+    }
+
+    #[test]
     fn test_parse_valid_cache() {
         let fixture = include_str!("../../../../tests/fixtures/antigravity_valid.json");
         // Simulated current time: 5 minutes after cachedQuotaUpdatedAt (1791752000000 + 300_000)
@@ -270,17 +299,29 @@ mod tests {
         assert_eq!(s.models.len(), 3);
 
         // Flash: 0.42 -> 42.0
-        let flash = s.models.iter().find(|m| m.model_id == "antigravity-gemini-flash").unwrap();
+        let flash = s
+            .models
+            .iter()
+            .find(|m| m.model_id == "antigravity-gemini-flash")
+            .unwrap();
         assert_eq!(flash.remaining_percent, Some(42.0));
-        assert_eq!(flash.display_name, "Gemini 3.8 Flash");
+        assert_eq!(flash.display_name, "Gemini Flash");
         assert_eq!(flash.reset_at.as_deref(), Some("2026-10-11T23:30:00Z"));
 
         // Pro: 0.85 -> 85.0
-        let pro = s.models.iter().find(|m| m.model_id == "antigravity-gemini-pro").unwrap();
+        let pro = s
+            .models
+            .iter()
+            .find(|m| m.model_id == "antigravity-gemini-pro")
+            .unwrap();
         assert_eq!(pro.remaining_percent, Some(85.0));
 
         // Claude: 0.15 -> 15.0
-        let claude = s.models.iter().find(|m| m.model_id == "antigravity-claude").unwrap();
+        let claude = s
+            .models
+            .iter()
+            .find(|m| m.model_id == "antigravity-claude")
+            .unwrap();
         assert_eq!(claude.remaining_percent, Some(15.0));
     }
 

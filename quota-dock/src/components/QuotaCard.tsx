@@ -1,210 +1,182 @@
-import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { QuotaSnapshot, Availability } from '../contracts';
-
-interface QuotaCardProps {
+import React from "react";
+import type { QuotaSnapshot, Availability } from "../contracts";
+const labels: Record<Availability, string> = {
+  ok: "Ao vivo",
+  partial: "Parcial",
+  stale: "Leitura anterior",
+  disabled: "Desativada",
+  not_configured: "Sem conta",
+  not_installed: "Não instalado",
+  unauthorized_scope: "Autenticação",
+  forbidden: "Acesso bloqueado",
+  rate_limited: "Limite atingido",
+  offline: "Sem conexão",
+  network_error: "Falha de conexão",
+  source_changed: "Fonte alterada",
+  no_data: "Sem leitura",
+  unknown_error: "Falha na consulta",
+};
+const percent = (n: number | null) =>
+  n !== null && Number.isFinite(n) && n >= 0 && n <= 100
+    ? n.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%"
+    : "Sem leitura";
+const reset = (iso: string | null) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime())
+    ? "Renova " +
+        d.toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+    : null;
+};
+export const QuotaCard: React.FC<{
   snapshot: QuotaSnapshot;
   onOpenHelp?: (key: string) => void;
-}
-
-export const QuotaCard: React.FC<QuotaCardProps> = ({ snapshot, onOpenHelp }) => {
-  const isGoogle = snapshot.providerId === 'google-antigravity';
-  const providerTitle = isGoogle ? 'GOOGLE / ANTIGRAVITY' : 'OPENAI / CODEX';
-  const accentClass = isGoogle ? 'google' : 'openai';
-
-  const formatReset = (isoStr: string | null) => {
-    if (!isoStr) return 'Sem previsão';
-    try {
-      const dt = new Date(isoStr);
-      if (isNaN(dt.getTime())) return 'Sem previsão';
-      const now = new Date();
-      const diffMs = dt.getTime() - now.getTime();
-      const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      if (diffMs > 0) {
-        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        if (diffHours > 24) {
-          const days = Math.floor(diffHours / 24);
-          return `Renova em ${days}d (${timeStr})`;
-        }
-        if (diffHours > 0) {
-          return `Renova às ${timeStr} (em ${diffHours}h ${diffMins}m)`;
-        }
-        return `Renova às ${timeStr} (em ${diffMins}m)`;
-      } else {
-        return `Horário de renovação: ${timeStr} (expirado)`;
-      }
-    } catch {
-      return 'Sem previsão';
-    }
-  };
-
-  const getStatusBadge = (status: Availability) => {
-    switch (status) {
-      case 'ok':
-        return <span className="badge badge-ok">CONFIRMADO</span>;
-      case 'stale':
-        return <span className="badge badge-stale">DESATUALIZADO</span>;
-      case 'rate_limited':
-        return <span className="badge badge-err">LIMITE ATINGIDO</span>;
-      case 'unauthorized_scope':
-        return <span className="badge badge-err">401 SEM PERMISSÃO</span>;
-      case 'forbidden':
-        return <span className="badge badge-err">403 BLOQUEADO</span>;
-      case 'not_installed':
-        return <span className="badge badge-neutral">NÃO INSTALADO</span>;
-      case 'no_data':
-        return <span className="badge badge-neutral">SEM SNAPSHOT</span>;
-      default:
-        return <span className="badge badge-neutral">{status}</span>;
-    }
-  };
-
-  const handleOpenHelp = () => {
-    if (onOpenHelp) {
-      onOpenHelp(isGoogle ? 'google-help' : 'codex-usage');
-    } else {
-      invoke('open_external_help', { key: isGoogle ? 'google-help' : 'codex-usage' });
-    }
-  };
-
+}> = ({ snapshot: s }) => {
+  const google = s.providerId === "google-antigravity";
+  const old =
+    s.status === "stale" ||
+    (!!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now());
+  const groups = new Map<string, typeof s.models>();
+  for (const m of s.models) {
+    const key = m.groupLabel || m.displayName;
+    groups.set(key, [...(groups.get(key) || []), m]);
+  }
+  const rows = google
+    ? [...groups].map(([label, models]) => {
+        const m = models
+          .filter(
+            (x) =>
+              x.remainingPercent !== null &&
+              Number.isFinite(x.remainingPercent),
+          )
+          .sort((a, b) => a.remainingPercent! - b.remainingPercent!)[0];
+        return {
+          id: label,
+          label,
+          value: m?.remainingPercent ?? null,
+          reset: m?.resetAt ?? null,
+        };
+      })
+    : s.windows.map((w) => ({
+        id: w.id,
+        label: w.label,
+        value: w.remainingPercent,
+        reset: w.resetAt,
+      }));
+  const source =
+    s.origin === "antigravity_plugin_cache"
+      ? "Cache do OpenCode"
+      : google
+        ? "Google · consulta direta"
+        : s.origin === "opencode_openai_usage"
+          ? "OpenCode · consulta direta"
+          : s.origin === "openai_quota_login"
+            ? "OpenAI · conexão QuotaDock"
+            : "OpenAI · login local do Codex";
+  const date = s.observedAt ? new Date(s.observedAt) : null;
   return (
-    <div className="quota-card">
+    <section
+      className={"quota-card" + (old ? " stale" : "")}
+      aria-label={(google ? "Google" : "OpenAI") + " " + s.accountLabel}
+    >
       <div className="card-header">
-        <div className="provider-info">
-          <span className="provider-name">{providerTitle}</span>
-          <span className="account-label">{snapshot.accountLabel}</span>
-        </div>
-        <div>{getStatusBadge(snapshot.status)}</div>
+        <span className="provider-name">
+          {google ? "Google" : "OpenAI"}
+          <span className="account-label">{s.accountLabel}</span>
+        </span>
+        <span
+          className={"badge" + (old || s.status !== "ok" ? " attention" : "")}
+        >
+          {old ? "Leitura anterior" : labels[s.status]}
+        </span>
       </div>
-
-      {/* Warnings & Notes */}
-      {snapshot.warnings && snapshot.warnings.length > 0 && (
-        <div className={snapshot.status === 'stale' ? 'warn-box' : 'err-box'}>
-          {snapshot.warnings.map((w, idx) => (
-            <div key={idx} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <span>⚠️</span>
-              <span>{w}</span>
+      <div className="quota-rows">
+        {rows.map((r) => (
+          <div
+            className="quota-item"
+            key={r.id}
+            title={reset(r.reset) || undefined}
+          >
+            <div className="quota-item-header">
+              <span className="quota-label">{r.label}</span>
+              <span className="quota-value">{percent(r.value)}</span>
             </div>
-          ))}
-        </div>
+            <div
+              className="quota-progress-track"
+              role={r.value === null ? undefined : "progressbar"}
+              aria-label={
+                r.label + ": saldo " + (old ? "anterior" : "restante")
+              }
+              aria-valuenow={r.value ?? undefined}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              {r.value !== null &&
+                Number.isFinite(r.value) &&
+                r.value >= 0 &&
+                r.value <= 100 && (
+                  <div
+                    className={
+                      "quota-progress-fill" + (r.value <= 10 ? " critical" : "")
+                    }
+                    style={{ width: r.value + "%" }}
+                  />
+                )}
+            </div>
+            {r.reset && <span className="reset-time">{reset(r.reset)}</span>}
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 && (
+        <p className="source-note">
+          {s.note || "A fonte não retornou limites nesta consulta."}
+        </p>
       )}
-
-      {/* Codex Windows */}
-      {!isGoogle && snapshot.windows.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {snapshot.windows.map((win) => {
-            const hasValue = win.remainingPercent !== null && win.remainingPercent !== undefined;
-            const remaining = hasValue ? Math.round(win.remainingPercent!) : null;
-            const isLow = remaining !== null && remaining <= 25 && remaining > 10;
-            const isCritical = remaining !== null && remaining <= 10;
-
-            return (
-              <div key={win.id} className="quota-item">
-                <div className="quota-item-header">
-                  <span className="quota-label">{win.label}</span>
-                  <span
-                    className="quota-value"
-                    style={{
-                      color: isCritical
-                        ? 'var(--error)'
-                        : isLow
-                        ? 'var(--warn)'
-                        : 'var(--text-primary)',
-                    }}
-                  >
-                    {hasValue ? `${remaining}% restante` : 'Indisponível'}
-                  </span>
-                </div>
-
-                <div className="quota-progress-track">
-                  {hasValue && (
-                    <div
-                      className={`quota-progress-fill ${accentClass} ${
-                        isCritical ? 'critical' : isLow ? 'low' : ''
-                      }`}
-                      style={{ width: `${Math.max(0, Math.min(100, remaining!))}%` }}
-                    />
-                  )}
-                </div>
-
-                <div className="quota-item-footer">
-                  <span>{formatReset(win.resetAt)}</span>
-                  <span>{win.usedPercent !== null ? `Usado: ${Math.round(win.usedPercent)}%` : ''}</span>
-                </div>
+      <details className="source-details">
+        <summary>
+          {source}
+          {date && Number.isFinite(date.getTime())
+            ? " · " +
+              date.toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : ""}
+        </summary>
+        <p>
+          Percentuais{" "}
+          {old
+            ? "da última leitura, que pode ter mudado"
+            : "restantes, informados pelo provedor"}
+          .{google ? " Resumo: menor saldo informado por família." : ""}
+        </p>
+        {rows.map(
+          (r) =>
+            r.reset && (
+              <p key={r.id}>
+                {r.label}: {reset(r.reset)}
+              </p>
+            ),
+        )}
+        {s.note && <p>{s.note}</p>}
+        {s.warnings.map((w, i) => (
+          <p key={i}>{w}</p>
+        ))}
+        {google &&
+          s.models
+            .filter((m) => m.sourceExact)
+            .map((m) => (
+              <div className="model-detail" key={m.modelId}>
+                <span>{m.displayName}</span>
+                <span>{percent(m.remainingPercent)}</span>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Google Models */}
-      {isGoogle && snapshot.models.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {snapshot.models.map((mod) => {
-            const hasValue = mod.remainingPercent !== null && mod.remainingPercent !== undefined;
-            const remaining = hasValue ? Math.round(mod.remainingPercent!) : null;
-            const isLow = remaining !== null && remaining <= 25 && remaining > 10;
-            const isCritical = remaining !== null && remaining <= 10;
-
-            return (
-              <div key={mod.modelId} className="quota-item">
-                <div className="quota-item-header">
-                  <span className="quota-label">{mod.displayName}</span>
-                  <span
-                    className="quota-value"
-                    style={{
-                      color: isCritical
-                        ? 'var(--error)'
-                        : isLow
-                        ? 'var(--warn)'
-                        : 'var(--text-primary)',
-                    }}
-                  >
-                    {hasValue ? `${remaining}% restante` : 'Indisponível'}
-                  </span>
-                </div>
-
-                <div className="quota-progress-track">
-                  {hasValue && (
-                    <div
-                      className={`quota-progress-fill ${accentClass} ${
-                        isCritical ? 'critical' : isLow ? 'low' : ''
-                      }`}
-                      style={{ width: `${Math.max(0, Math.min(100, remaining!))}%` }}
-                    />
-                  )}
-                </div>
-
-                <div className="quota-item-footer">
-                  <span>{formatReset(mod.resetAt)}</span>
-                  <span>{mod.groupLabel}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Empty State / CTA if unavailable */}
-      {snapshot.windows.length === 0 && snapshot.models.length === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 0' }}>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-            {snapshot.status === 'unauthorized_scope'
-              ? 'A autenticação atual do editor não possui permissão para ler o endpoint de cotas.'
-              : 'Nenhuma quota pôde ser consultada por esta fonte no momento.'}
-          </p>
-          <button className="cta-btn" onClick={handleOpenHelp}>
-            <span>Abrir Painel Oficial</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </button>
-        </div>
-      )}
-    </div>
+            ))}
+      </details>
+    </section>
   );
 };

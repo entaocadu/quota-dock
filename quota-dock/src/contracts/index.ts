@@ -1,6 +1,9 @@
 export type ProviderId = 'openai-codex' | 'google-antigravity' | 'opencode-local';
 
 export type OriginKind =
+  | 'opencode_openai_usage'
+  | 'codex_local_usage'
+  | 'openai_quota_login'
   | 'codex_app_server'
   | 'codex_web_manual'
   | 'openai_undocumented_opt_in'

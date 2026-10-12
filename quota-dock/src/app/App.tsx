@@ -1,152 +1,135 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { Header } from '../components/Header';
-import { QuotaCard } from '../components/QuotaCard';
-import { LocalTokensView } from '../components/LocalTokensView';
-import { DiagnosticsView } from '../components/DiagnosticsView';
-import { HistoryView } from '../components/HistoryView';
-import { SettingsView } from '../components/SettingsView';
-import { QuotaSnapshot, PublicSettings } from '../contracts';
-
-type Tab = 'overview' | 'tokens' | 'history' | 'diagnostics' | 'settings';
-
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { Header } from "../components/Header";
+import { QuotaCard } from "../components/QuotaCard";
+import { SettingsView } from "../components/SettingsView";
+import type { QuotaSnapshot } from "../contracts";
 export const App: React.FC = () => {
-  const [tab, setTab] = useState<Tab>('overview');
-  const [snapshots, setSnapshots] = useState<QuotaSnapshot[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [pinned, setPinned] = useState(false);
-
-  const loadOverview = useCallback(async () => {
+  const [settingsOpen, setSettingsOpen] = useState(false),
+    [snapshots, setSnapshots] = useState<QuotaSnapshot[]>([]),
+    [refreshing, setRefreshing] = useState(false),
+    [error, setError] = useState<string | null>(null),
+    [lastAttempt, setLastAttempt] = useState<string | null>(null);
+  const loading = useRef(false);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        void invoke("resize_flyout", {
+          height: Math.ceil(element.getBoundingClientRect().height + 78),
+        }).catch(() => {});
+      });
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  const loadOverview = useCallback(async (force = false) => {
+    if (loading.current) return;
+    loading.current = true;
     setRefreshing(true);
     try {
-      const data = await invoke<QuotaSnapshot[]>('get_overview');
-      setSnapshots(data);
-      setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    } catch (e) {
-      console.error('Error fetching overview:', e);
+      setSnapshots(
+        await invoke<QuotaSnapshot[]>(
+          force ? "request_refresh" : "get_overview",
+        ),
+      );
+      setError(null);
+    } catch {
+      setError("Falha ao atualizar. A leitura anterior pode ter mudado.");
+      setSnapshots((prev) => prev.map((s) => ({ ...s, status: "stale" })));
     } finally {
+      setLastAttempt(
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
       setRefreshing(false);
+      loading.current = false;
     }
   }, []);
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const s = await invoke<PublicSettings>('get_settings');
-      setPinned(s.pinned);
-    } catch (e) {
-      console.error('Error fetching settings:', e);
-    }
-  }, []);
-
   useEffect(() => {
-    loadOverview();
-    loadSettings();
-
-    // Listen to ESC key to close/hide
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        invoke('hide_window');
-      }
+    void loadOverview();
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") void invoke("hide_window");
     };
-    window.addEventListener('keydown', handleKeyDown);
-
-    // Listen to tray events
-    const unlistenRefresh = listen('trigger-refresh', () => {
-      loadOverview();
-    });
-
-    const unlistenNav = listen<string>('navigate-tab', (event) => {
-      if (['overview', 'tokens', 'history', 'diagnostics', 'settings'].includes(event.payload)) {
-        setTab(event.payload as Tab);
-      }
-    });
-
+    window.addEventListener("keydown", escape);
+    const listeners = [
+      listen<QuotaSnapshot[]>("quotas-updated", (e) => {
+        setSnapshots(e.payload);
+        setLastAttempt(
+          new Date().toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        );
+      }),
+      listen("trigger-refresh", () => void loadOverview(true)),
+      listen("flyout-opened", () => {
+        setSettingsOpen(false);
+        void loadOverview();
+      }),
+    ];
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      unlistenRefresh.then((f) => f());
-      unlistenNav.then((f) => f());
+      window.removeEventListener("keydown", escape);
+      listeners.forEach((p) => {
+        void p.then((f) => f());
+      });
     };
-  }, [loadOverview, loadSettings]);
-
-  const togglePin = async () => {
-    const nextPin = !pinned;
-    setPinned(nextPin);
-    await invoke('update_settings', { patch: { pinned: nextPin } });
-  };
-
+  }, [loadOverview]);
   return (
     <div className="window-container">
       <Header
-        lastUpdated={lastUpdated}
         refreshing={refreshing}
-        onRefresh={loadOverview}
-        pinned={pinned}
-        onTogglePin={togglePin}
+        onRefresh={() => void loadOverview(true)}
+        settingsOpen={settingsOpen}
+        onSettings={() => setSettingsOpen((v) => !v)}
       />
-
-      <nav className="tab-bar">
-        <button
-          className={`tab-btn ${tab === 'overview' ? 'active' : ''}`}
-          onClick={() => setTab('overview')}
-        >
-          Visão Geral
-        </button>
-        <button
-          className={`tab-btn ${tab === 'tokens' ? 'active' : ''}`}
-          onClick={() => setTab('tokens')}
-        >
-          Tokens Locais
-        </button>
-        <button
-          className={`tab-btn ${tab === 'history' ? 'active' : ''}`}
-          onClick={() => setTab('history')}
-        >
-          Histórico
-        </button>
-        <button
-          className={`tab-btn ${tab === 'diagnostics' ? 'active' : ''}`}
-          onClick={() => setTab('diagnostics')}
-        >
-          Diagnóstico
-        </button>
-        <button
-          className={`tab-btn ${tab === 'settings' ? 'active' : ''}`}
-          onClick={() => setTab('settings')}
-        >
-          Ajustes
-        </button>
-      </nav>
-
-      <main className="content-body">
-        {tab === 'overview' && (
-          <>
-            {snapshots.length === 0 && refreshing ? (
-              <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: '12px' }}>
-                Consultando limites reais...
-              </div>
-            ) : (
-              snapshots.map((s, idx) => (
+      <main className="content-body" aria-busy={refreshing}>
+        <div ref={content} className="content-inner">
+          {settingsOpen ? (
+            <SettingsView />
+          ) : (
+            <>
+              {error && (
+                <p role="alert" className="error-note">
+                  {error}
+                </p>
+              )}
+              {snapshots.length === 0 && (
+                <div className="empty-state">
+                  {refreshing
+                    ? "Consultando suas contas…"
+                    : "Nenhuma leitura recebida."}
+                </div>
+              )}
+              {snapshots.map((s) => (
                 <QuotaCard
-                  key={`${s.providerId}-${idx}`}
+                  key={s.providerId + "-" + s.accountKey}
                   snapshot={s}
-                  onOpenHelp={(key) => invoke('open_external_help', { key })}
                 />
-              ))
-            )}
-          </>
-        )}
-
-        {tab === 'tokens' && <LocalTokensView />}
-        {tab === 'history' && <HistoryView />}
-        {tab === 'diagnostics' && <DiagnosticsView />}
-        {tab === 'settings' && <SettingsView />}
+              ))}
+            </>
+          )}
+        </div>
       </main>
-
       <footer className="footer-bar">
-        <span>Residente na bandeja</span>
-        <span>Esc para ocultar</span>
+        <span>
+          {refreshing
+            ? "Consultando…"
+            : lastAttempt
+              ? "Consulta " + lastAttempt
+              : "Aguardando consulta"}
+        </span>
+        <span>Clique fora para ocultar</span>
       </footer>
     </div>
   );

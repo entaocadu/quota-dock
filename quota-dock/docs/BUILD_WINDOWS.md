@@ -1,57 +1,25 @@
-# Instruções de Build no Windows
+# Build Windows
 
-Guia reproduzível para compilar o **QuotaDock** no Windows 10/11 x64.
+Requisitos: Node.js 20+, Rust, WebView2 e toolchain MSVC ou MinGW GNU no PATH. Validado nesta máquina com Rust 1.99.0 GNU, GCC 16.2 UCRT e Node.js instalado.
 
-## 1. Pré-requisitos de Sistema
-
-- **Sistema Operacional:** Windows 10 x64 (com WebView2) ou Windows 11 x64.
-- **Node.js:** Versão 20+ ou 24+ LTS.
-- **Rust Toolchain:**
-  - `rustc` e `cargo` 1.80+ (testado e homologado com `rustc 1.98.1`).
-  - Toolchain MSVC (`x86_64-pc-windows-msvc`) ou MinGW GNU (`x86_64-pc-windows-gnu` com GCC 16+ / UCRT).
-- **Microsoft Edge WebView2 Runtime:** Instalado por padrão no Windows 11. Para Windows 10, disponível no [site oficial da Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
-
-## 2. Passo a Passo de Compilação
-
-### Passo 2.1 — Instalar Dependências NPM
-No diretório raiz do projeto (`quota-dock`):
 ```powershell
-npm install
-```
-
-### Passo 2.2 — Executar Testes Automatizados
-```powershell
-# Testes do Frontend (TypeScript / Vitest)
+npm ci
 npm test
-
-# Testes do Backend (Rust / Cargo)
-cd src-tauri
-cargo test
-cd ..
-```
-
-### Passo 2.3 — Gerar o Build de Produção
-```powershell
-# 1. Compila os assets do frontend React para dist/
 npm run build
-
-# 2. Compilar o executável de release com otimizações
-cd src-tauri
-cargo build --release
+npm run test:rust
+npm run tauri build -- --bundles nsis
 ```
 
-O binário final estará em:
-`quota-dock\src-tauri\target\release\quota-dock.exe`
+Instalador: src-tauri/target/release/bundle/nsis/. Executável: src-tauri/target/release/quota-dock.exe. Para distribuição GNU portátil, inclua WebView2Loader.dll que o build gera ao lado do executável.
 
-## 3. Empacotamento do Instalador Windows (NSIS)
+O harness de testes GNU recebe um manifesto mínimo do Rust que omite Common Controls v6. Isso impede importar TaskDialogIndirect. scripts/run-rust-tests.ps1 compila os testes, embute o manifesto adequado e coloca o WebView2Loader ao lado dos testes. O script recusa executáveis fora do target do projeto.
 
-Para gerar o instalador `.exe` (NSIS):
+Consulta real, sem imprimir credenciais:
 ```powershell
-npm run tauri build
+cargo build --manifest-path src-tauri/Cargo.toml --example verify_sources
+./scripts/run-rust-tests.ps1 -ExistingExecutable src-tauri/target/debug/examples/verify_sources.exe
 ```
-O instalador será gerado na pasta:
-`quota-dock\src-tauri\target\release\bundle\nsis\`
 
-## 4. Notas sobre Assinatura de Código (Code Signing)
+O exemplo valida as fontes configuradas e mostra apenas snapshots públicos. Não copie resultados pessoais para commits.
 
-Caso você não possua um certificado digital comercial (EV/OV) instalado, o Windows SmartScreen pode apresentar um aviso informativo na primeira execução do executável gerado. Isso é esperado em builds locais; para executar, basta clicar em "Mais informações" -> "Executar assim mesmo".
+Inicialização: sem argumentos ou com --background, fica oculto. --show abre o popup para uma verificação manual. O menu Sair encerra o processo; X, Esc e perda de foco apenas ocultam a janela.

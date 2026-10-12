@@ -12,7 +12,7 @@ pub fn to_remaining_from_used(used: Option<f64>) -> Option<f64> {
 
 pub fn to_remaining_from_fraction(fraction: Option<f64>) -> Option<f64> {
     match fraction {
-        Some(val) if val.is_finite() && val >= 0.0 && val <= 1.5 => {
+        Some(val) if val.is_finite() && val >= 0.0 && val <= 1.0 => {
             let clamped = (val * 100.0).clamp(0.0, 100.0);
             Some((clamped * 100.0).round() / 100.0)
         }

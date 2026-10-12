@@ -11,6 +11,9 @@ pub enum ProviderId {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OriginKind {
+    OpencodeOpenaiUsage,
+    CodexLocalUsage,
+    OpenaiQuotaLogin,
     CodexAppServer,
     CodexWebManual,
     OpenaiUndocumentedOptIn,
@@ -146,10 +149,10 @@ pub struct PublicSettings {
 impl Default for PublicSettings {
     fn default() -> Self {
         Self {
-            start_with_windows: false,
+            start_with_windows: true,
             theme: "carbon-dark".to_string(),
-            google_live_opt_in: false,
-            poll_interval_mins: 10,
+            google_live_opt_in: true,
+            poll_interval_mins: 1,
             notifications_enabled: false,
             notify_threshold_25: false,
             notify_threshold_10: false,

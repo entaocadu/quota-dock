@@ -1,25 +1,15 @@
-# Política de Segurança e Privacidade — QuotaDock
+# Segurança
 
-## 1. Princípios Inegociáveis
+Os tokens são usados apenas pelo backend Rust. A interface e o histórico recebem QuotaSnapshot, sem credenciais. Mensagens de erro não incluem corpos de respostas, cabeçalhos Authorization ou URLs de callback.
 
-1. **Leitor Estrito, Não Gerenciador de Credenciais:** O QuotaDock não armazena senhas, refresh tokens ou segredos de autenticação em disco.
-2. **Zero Backend Próprio:** Toda e qualquer operação é executada exclusivamente na sua máquina local. Nenhuma telemetria, medição de uso ou tráfego de rede é enviado para servidores do QuotaDock.
-3. **Não Destrutivo:** O QuotaDock nunca altera nem escreve nos arquivos de configuração ou bancos de dados do OpenCode (`opencode.db`, `opencode.json`, `antigravity-accounts.json`, etc.). Qualquer acesso a arquivos locais é estritamente em modo *read-only*.
-4. **Isolamento de Segredos:** Qualquer dado sensível lido temporariamente para consultas de autorização permanece exclusivamente em memória pelo tempo estritamente necessário para o request e é descartado imediatamente. Nenhuma credencial ou token JWT é passado para o frontend WebView ou gravado em logs.
+O banco e o arquivo de credenciais do OpenCode são abertos somente para leitura. O login do Codex também é somente leitura: QuotaDock não executa Codex, não copia seu refresh token para outro armazenamento e não renova nem sobrescreve esse login.
 
-## 2. Redação e Mascaramento
+A conexão OpenAI própria usa OAuth Authorization Code com PKCE S256 e estado aleatório, callback apenas no loopback IPv4 (1455 ou 1457) e timeout de 180 segundos. Requisições incompletas ou estados inválidos não encerram nem autorizam a sessão. A troca de código vai ao endpoint HTTPS fixo da OpenAI; a identidade da resposta confiável é reconciliada com a consulta de quota e, em uma reconexão, com a identidade da conexão escolhida.
 
-- E-mails de contas são mascarados no backend antes de alcançar a interface gráfica: ex. `e***@gmail.com`.
-- Chaves identificadoras de contas (`accountKey`) são geradas via hash SHA-256 local com salt exclusivo, evitando a propagação de tokens brutos como identificadores.
-- Funções de redação sanitizam strings de erro e respostas para suprimir cabeçalhos `Authorization: Bearer [REDACTED]` e segredos OAuth.
+Cada sessão própria é cifrada com Windows DPAPI para o usuário atual, em APPDATA/QuotaDock/openai-sessions/<identidade-hash>.bin. A identidade é conferida também ao abrir o arquivo. Renovações e reconexões da mesma conta são serializadas; contas diferentes usam bloqueios independentes. A sessão legada única é migrada após salvamento protegido. Os tokens Google de acesso ficam em memória; o arquivo de contas do plugin não é alterado.
 
-## 3. Postura diante de Endpoints Privados
+As consultas HTTPS usam origens fixas, TLS e timeout; redirecionamentos HTTP são recusados. Arquivos de login possuem limite de tamanho. O histórico local é limitado aos últimos 2000 snapshots sanitizados.
 
-- **Google Antigravity:** O modo padrão do QuotaDock é **Somente Leitura de Cache Local** (`antigravity_plugin_cache`). A consulta direta aos endpoints comunitários privados (`v1internal:fetchAvailableModels`) é experimental, mantida desativada por padrão e exige consentimento explícito do usuário nas Configurações, devido aos termos de serviço do provedor.
-- **OpenAI Codex:** O acesso a cotas é realizado primariamente através do protocolo oficial JSON-RPC stdio do `codex app-server`. Caso uma autenticação retorne erro 401 ou escopo não autorizado, o QuotaDock não tenta contornar o erro e disponibiliza link direto para o dashboard oficial da OpenAI.
+Não há servidor próprio de telemetria. O backend se conecta diretamente aos provedores. Os limites são reportados pelo provedor, e qualquer dado anterior é identificado como antigo.
 
-## 4. Banco de Dados Local do QuotaDock
-
-O aplicativo mantém um banco SQLite próprio e isolado localizado em `%APPDATA%\QuotaDock\quotadock.db`. Esse banco armazena exclusivamente:
-- Preferências públicas do usuário (tema, intervalo de atualização, início com Windows).
-- Histórico resumido e sanitizado de quotas observadas (`json_sanitized` sem segredos).
+As constantes OAuth do plugin Google e o client ID público do Codex são configurações públicas dos clientes; não são tokens ou segredos pessoais do usuário.

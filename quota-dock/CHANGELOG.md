@@ -1,15 +1,15 @@
 # Changelog
 
-Todas as alterações relevantes no projeto QuotaDock serão documentadas neste arquivo.
+## 0.2.0 — 2026-10-12
 
-## [0.1.0] - 2026-10-11
-
-### Adicionado
-- **Core Architecture:** Estrutura completa em Tauri 2, Rust e React 19 + TypeScript.
-- **System Tray:** Residente na bandeja de notificações do Windows, com flyout flutuante, posicionamento inteligente e menu nativo de contexto (Abrir, Atualizar, Diagnóstico, Sair).
-- **Adaptador OpenAI Codex:** Leitura via stdio do `codex app-server` oficial com parsing de janelas (5h e 7d), `usedPercent` normalizado para `remainingPercent`, timestamps de renovação em fuso horário local e créditos de rate limit.
-- **Adaptador Google Antigravity:** Leitura segura e somente leitura do arquivo de cache `antigravity-accounts.json` do plugin `@pieliesdie`, com acompanhamento de Gemini 3.8 Flash, Gemini Pro e Claude.
-- **Painel de Tokens Locais:** Integração com `opencode stats --json` para contabilidade clara e separada do uso de tokens na máquina.
-- **Diagnóstico Seguro:** Verificação de integridade das integrações locais sem exibição ou exportação de credenciais.
-- **Histórico & Ajustes:** Armazenamento SQLite próprio para histórico e configurações (tema, início automático com o Windows, alertas e polling interval).
-- **Testes Unitários:** Testes de normalização, contratos, banco SQLite e sanitização validados.
+- Popup de 360 pixels de largura em preto carbono, barras monocromáticas e altura automática; listas grandes usam rolagem.
+- Posição junto à bandeja respeita área útil, DPI e múltiplos monitores. Arraste pelo título; clique fora ou Esc oculta.
+- Inicialização Windows real, oculta; instância única e ausência da barra de tarefas.
+- Consultas Google ao vivo, por conta e por modelo, com tokens em memória e cache anterior explicitamente marcado.
+- OpenAI consulta diretamente wham/usage, lê credenciais atuais OpenCode/SQLite e login Codex compatível sem executar Codex.
+- Conexão OpenAI própria com OAuth PKCE, DPAPI e renovação independente; nunca renova credenciais compartilhadas de outro app.
+- Quantidade variável de contas Google e OpenAI; conexões protegidas individuais, consultas concorrentes limitadas e seleção de fonte saudável da mesma conta.
+- Atualização em segundo plano a cada minuto e atualização manual forçada.
+- Dados ausentes não viram zero ou cem por cento; não há versões de modelo ou durações de quota inventadas.
+- Histórico limitado a 2000 leituras sanitizadas, testes de parsers, identidade, callbacks fragmentados e proteção Windows.
+- Vitest atualizado; auditoria npm sem vulnerabilidades após a atualização.

@@ -9,265 +9,275 @@ pub mod security {
 pub mod storage;
 pub mod tray;
 
+use crate::contracts::*;
+use crate::providers::live::*;
+use crate::storage::*;
 use rusqlite::Connection;
-use tauri::Manager;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 
-use crate::contracts::{
-    Availability, LocalTokens, OriginKind, ProviderDiag, ProviderId, PublicSettings,
-    SafeSettingsPatch, SanitizedDiagnostics, QuotaSnapshot,
-};
-use crate::providers::antigravity::{get_default_accounts_path, read_local_antigravity_cache};
-use crate::providers::openai::query_codex_app_server;
-use crate::providers::opencode::query_opencode_local_tokens;
-use crate::storage::{
-    clear_history as db_clear_history, get_app_db_path, get_history as db_get_history,
-    init_db, load_settings, save_settings, save_snapshot,
-};
-
-fn get_db_conn() -> Result<Connection, String> {
-    let path = get_app_db_path();
-    let conn = Connection::open(path).map_err(|e| format!("Erro ao abrir banco QuotaDock: {}", e))?;
-    let _ = init_db(&conn);
+#[derive(Default)]
+struct QuotaService {
+    cache: tokio::sync::Mutex<Option<(Instant, Vec<QuotaSnapshot>)>>,
+    gate: tokio::sync::Mutex<()>,
+    poll_mins: AtomicU32,
+}
+fn db() -> Result<Connection, String> {
+    let conn = Connection::open(get_app_db_path()).map_err(|_| "Falha ao abrir banco local")?;
+    init_db(&conn).map_err(|_| "Falha ao preparar banco local")?;
     Ok(conn)
 }
-
-#[tauri::command]
-async fn get_overview() -> Result<Vec<QuotaSnapshot>, String> {
-    let mut snapshots = Vec::new();
-
-    // 1. Google Antigravity local cache
-    match read_local_antigravity_cache(None) {
-        Ok(snaps) => {
-            if let Ok(conn) = get_db_conn() {
-                for s in &snaps {
-                    let _ = save_snapshot(&conn, s);
-                }
+async fn refresh(app: &tauri::AppHandle, force: bool) -> Result<Vec<QuotaSnapshot>, String> {
+    let state = app.state::<QuotaService>();
+    let _guard = state.gate.lock().await;
+    if !force {
+        if let Some((time, data)) = &*state.cache.lock().await {
+            if time.elapsed() < Duration::from_secs(15) {
+                return Ok(data.clone());
             }
-            snapshots.extend(snaps);
-        }
-        Err(e) => {
-            snapshots.push(QuotaSnapshot {
-                schema_version: 1,
-                provider_id: ProviderId::GoogleAntigravity,
-                origin: OriginKind::AntigravityPluginCache,
-                account_key: "google_read_error".to_string(),
-                account_label: "Google Antigravity".to_string(),
-                status: Availability::UnknownError,
-                observed_at: None,
-                attempted_at: Some(chrono::Utc::now().to_rfc3339()),
-                expires_at: None,
-                source_version: None,
-                note: Some(e),
-                windows: vec![],
-                models: vec![],
-                warnings: vec!["Erro ao ler cache local do Google".to_string()],
-                raw_error_code: Some("CACHE_READ_ERROR".to_string()),
-            });
         }
     }
-
-    // 2. OpenAI Codex app-server live query
-    match query_codex_app_server().await {
-        Ok(snap) => {
-            if let Ok(conn) = get_db_conn() {
-                let _ = save_snapshot(&conn, &snap);
-            }
-            snapshots.push(snap);
-        }
-        Err(e) => {
-            snapshots.push(QuotaSnapshot {
-                schema_version: 1,
-                provider_id: ProviderId::OpenaiCodex,
-                origin: OriginKind::CodexAppServer,
-                account_key: "openai_query_error".to_string(),
-                account_label: "OpenAI Codex".to_string(),
-                status: Availability::UnauthorizedScope,
-                observed_at: None,
-                attempted_at: Some(chrono::Utc::now().to_rfc3339()),
-                expires_at: None,
-                source_version: None,
-                note: Some(e),
-                windows: vec![],
-                models: vec![],
-                warnings: vec![
-                    "Não foi possível obter quotas pelo Codex app-server.".to_string(),
-                    "Verifique se o Codex CLI está autenticado ou use o painel oficial.".to_string(),
-                ],
-                raw_error_code: Some("APP_SERVER_UNAVAILABLE".to_string()),
-            });
-        }
+    let (google, openai) = tokio::join!(query_google_live(), query_openai_live());
+    let mut snapshots = google.unwrap_or_else(|e| {
+        vec![failure(
+            ProviderId::GoogleAntigravity,
+            OriginKind::AntigravityPrivateOptIn,
+            Availability::UnknownError,
+            &e,
+        )]
+    });
+    snapshots.extend(openai.unwrap_or_else(|e| {
+        vec![failure(
+            ProviderId::OpenaiCodex,
+            OriginKind::CodexLocalUsage,
+            if e.contains("Formato") || e.contains("corresponde") {
+                Availability::SourceChanged
+            } else if e.contains("não encontrado") {
+                Availability::NotConfigured
+            } else if e.contains("login inválido") || e.contains("Conecte") {
+                Availability::UnauthorizedScope
+            } else {
+                Availability::NetworkError
+            },
+            &e,
+        )]
+    }));
+    if let Some((_, previous)) = &*state.cache.lock().await {
+        snapshots = retain_previous_readings(snapshots, previous);
     }
-
+    if let Ok(conn) = db() {
+        for s in &snapshots {
+            let _ = save_snapshot(&conn, s);
+        }
+        let _=conn.execute("DELETE FROM snapshots WHERE id NOT IN (SELECT id FROM snapshots ORDER BY id DESC LIMIT 2000)",[]);
+    }
+    *state.cache.lock().await = Some((Instant::now(), snapshots.clone()));
+    let _ = app.emit("quotas-updated", &snapshots);
     Ok(snapshots)
 }
-
-#[tauri::command]
-async fn get_local_tokens(range: String) -> Result<Option<LocalTokens>, String> {
-    match query_opencode_local_tokens(&range).await {
-        Ok(tokens) => Ok(Some(tokens)),
-        Err(_) => Ok(None),
-    }
-}
-
-#[tauri::command]
-async fn request_refresh(provider_id: Option<String>) -> Result<Vec<QuotaSnapshot>, String> {
-    let _ = provider_id;
-    get_overview().await
-}
-
-#[tauri::command]
-async fn get_diagnostics() -> Result<SanitizedDiagnostics, String> {
-    let db_path = std::env::var("USERPROFILE")
-        .map(|p| std::path::PathBuf::from(p).join(".local/share/opencode/opencode.db"))
-        .unwrap_or_default();
-    let opencode_db_detected = db_path.exists();
-
-    let antigravity_path = get_default_accounts_path();
-    let antigravity_accounts_detected = antigravity_path.exists();
-
-    let codex_cli_detected = which_codex();
-
-    let snapshots = get_overview().await.unwrap_or_default();
-    let mut providers = Vec::new();
-
-    for s in snapshots {
-        providers.push(ProviderDiag {
-            provider_id: s.provider_id,
-            status: s.status,
-            origin: s.origin,
-            last_success: s.observed_at,
-            last_attempt: s.attempted_at,
-            error_code: s.raw_error_code,
+fn retain_previous_readings(
+    current: Vec<QuotaSnapshot>,
+    previous: &[QuotaSnapshot],
+) -> Vec<QuotaSnapshot> {
+    let mut result = Vec::new();
+    for s in current {
+        let failed = matches!(
+            s.status,
+            Availability::NetworkError | Availability::UnknownError | Availability::Stale
+        );
+        let matches = previous.iter().filter(|old| {
+            old.provider_id == s.provider_id
+                && (old.account_key == s.account_key || s.account_key == "source-error")
+                && (!old.windows.is_empty() || !old.models.is_empty())
         });
+        let mut preserved = false;
+        if failed {
+            for old in matches {
+                let old_time = old
+                    .observed_at
+                    .as_deref()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
+                let new_time = s
+                    .observed_at
+                    .as_deref()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
+                if old_time > new_time || (s.models.is_empty() && s.windows.is_empty()) {
+                    let mut cached = old.clone();
+                    cached.status = Availability::Stale;
+                    cached.attempted_at = s.attempted_at.clone();
+                    cached.warnings = s.warnings.clone();
+                    if let Some(note) = &s.note {
+                        cached.warnings.push(note.clone());
+                    }
+                    result.push(cached);
+                    preserved = true;
+                }
+            }
+        }
+        if !preserved {
+            result.push(s);
+        }
     }
-
-    Ok(SanitizedDiagnostics {
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        app_version: "0.1.0".to_string(),
-        os: "Windows 11 x64".to_string(),
-        providers,
-        opencode_db_detected,
-        antigravity_accounts_detected,
-        codex_cli_detected,
-    })
+    result
 }
-
-fn which_codex() -> bool {
-    std::process::Command::new("codex")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 #[tauri::command]
-async fn get_settings() -> Result<PublicSettings, String> {
-    let conn = get_db_conn()?;
-    load_settings(&conn).map_err(|e| format!("Erro ao carregar configurações: {}", e))
+async fn get_overview(app: tauri::AppHandle) -> Result<Vec<QuotaSnapshot>, String> {
+    refresh(&app, false).await
 }
-
 #[tauri::command]
-async fn update_settings(patch: SafeSettingsPatch) -> Result<PublicSettings, String> {
-    let conn = get_db_conn()?;
-    let mut current = load_settings(&conn).unwrap_or_default();
-
-    if let Some(v) = patch.start_with_windows {
-        current.start_with_windows = v;
-    }
-    if let Some(v) = patch.theme {
-        current.theme = v;
-    }
-    if let Some(v) = patch.google_live_opt_in {
-        current.google_live_opt_in = v;
-    }
-    if let Some(v) = patch.poll_interval_mins {
-        current.poll_interval_mins = v;
-    }
-    if let Some(v) = patch.notifications_enabled {
-        current.notifications_enabled = v;
-    }
-    if let Some(v) = patch.notify_threshold_25 {
-        current.notify_threshold_25 = v;
-    }
-    if let Some(v) = patch.notify_threshold_10 {
-        current.notify_threshold_10 = v;
-    }
-    if let Some(v) = patch.notify_threshold_0 {
-        current.notify_threshold_0 = v;
-    }
-    if let Some(v) = patch.pinned {
-        current.pinned = v;
-    }
-
-    save_settings(&conn, &current).map_err(|e| format!("Erro ao salvar configurações: {}", e))?;
-    Ok(current)
+async fn request_refresh(app: tauri::AppHandle) -> Result<Vec<QuotaSnapshot>, String> {
+    refresh(&app, true).await
 }
-
 #[tauri::command]
-async fn get_history(limit: Option<usize>) -> Result<Vec<QuotaSnapshot>, String> {
-    let conn = get_db_conn()?;
-    let lim = limit.unwrap_or(50);
-    db_get_history(&conn, lim).map_err(|e| format!("Erro ao obter histórico: {}", e))
+fn get_settings() -> Result<PublicSettings, String> {
+    load_settings(&db()?).map_err(|_| "Falha ao ler ajustes".into())
 }
-
 #[tauri::command]
-async fn clear_history() -> Result<(), String> {
-    let conn = get_db_conn()?;
-    db_clear_history(&conn).map_err(|e| format!("Erro ao limpar histórico: {}", e))
+fn update_settings(
+    app: tauri::AppHandle,
+    patch: SafeSettingsPatch,
+) -> Result<PublicSettings, String> {
+    let conn = db()?;
+    let mut s = load_settings(&conn).map_err(|_| "Falha ao ler ajustes")?;
+    if let Some(start) = patch.start_with_windows {
+        if start {
+            app.autolaunch().enable()
+        } else {
+            app.autolaunch().disable()
+        }
+        .map_err(|_| "Falha ao registrar inicialização no Windows")?;
+        s.start_with_windows = start;
+    }
+    if let Some(interval) = patch.poll_interval_mins {
+        if ![1, 2, 5, 10].contains(&interval) {
+            return Err("Intervalo inválido".into());
+        }
+        s.poll_interval_mins = interval;
+    }
+    save_settings(&conn, &s).map_err(|_| "Falha ao salvar ajustes")?;
+    app.state::<QuotaService>()
+        .poll_mins
+        .store(s.poll_interval_mins, Ordering::Relaxed);
+    Ok(s)
 }
-
 #[tauri::command]
-async fn open_external_help(key: String) -> Result<(), String> {
-    let url = match key.as_str() {
-        "codex-usage" => "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan",
-        "google-help" => "https://github.com/pieliesdie/opencode-antigravity-auth",
-        "opencode-help" => "https://dev.opencode.ai",
-        "codex-settings" => "https://chatgpt.com/codex/cloud/settings/analytics#usage",
-        _ => return Err("URL não permitida".to_string()),
-    };
-
-    let _ = open::that(url);
-    Ok(())
+fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|_| "Falha ao ocultar janela".into())
 }
-
 #[tauri::command]
-async fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
-    let _ = window.hide();
-    Ok(())
+fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
+    tray::start_dragging(&window)
 }
-
+#[tauri::command]
+async fn connect_openai(app: tauri::AppHandle, account_key: Option<String>) -> Result<(), String> {
+    providers::native_auth::begin_login(app, account_key).await
+}
+#[tauri::command]
+fn openai_connections() -> Vec<providers::native_auth::ConnectedAccount> {
+    providers::native_auth::connected_accounts()
+}
+#[tauri::command]
+fn resize_flyout(window: tauri::WebviewWindow, height: f64) -> Result<(), String> {
+    tray::resize_flyout(&window, height).map_err(|_| "Falha ao ajustar janela".into())
+}
+#[tauri::command]
+fn get_history(limit: Option<usize>) -> Result<Vec<QuotaSnapshot>, String> {
+    storage::get_history(&db()?, limit.unwrap_or(50).min(2000))
+        .map_err(|_| "Falha ao ler histórico".into())
+}
+#[tauri::command]
+fn clear_history() -> Result<(), String> {
+    storage::clear_history(&db()?).map_err(|_| "Falha ao limpar histórico".into())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if args.iter().any(|a| a == "--show") {
+                let _ = tray::show_flyout(app, None);
+            }
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--background"]),
+        ))
+        .manage(QuotaService::default())
         .setup(|app| {
-            let _ = tray::setup_tray(app.handle());
-
-            // Window close event hides rather than quits
+            tray::setup_tray(app.handle())?;
+            let conn = db().map_err(std::io::Error::other)?;
+            let migrated: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM settings WHERE key='compact_tray_v2')",
+                [],
+                |r| r.get(0),
+            )?;
+            let mut settings = load_settings(&conn)?;
+            if !migrated {
+                settings.start_with_windows = true;
+                settings.poll_interval_mins = 1;
+                settings.pinned = false;
+                settings.google_live_opt_in = true;
+                save_settings(&conn, &settings)?;
+                conn.execute(
+                    "INSERT INTO settings(key,value) VALUES('compact_tray_v2','1')",
+                    [],
+                )?;
+            }
+            if settings.start_with_windows {
+                app.autolaunch().enable()?;
+            } else {
+                app.autolaunch().disable()?;
+            }
+            app.state::<QuotaService>()
+                .poll_mins
+                .store(settings.poll_interval_mins, Ordering::Relaxed);
             if let Some(window) = app.get_webview_window("main") {
-                let win_clone = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let win = window.clone();
+                window.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
-                        let _ = win_clone.hide();
+                        tray::hide_flyout(&win);
                     }
+                    tauri::WindowEvent::Focused(false) => tray::hide_flyout(&win),
+                    _ => {}
                 });
             }
-
+            if std::env::args().any(|a| a == "--show") {
+                let _ = tray::show_flyout(app.handle(), None);
+            }
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = refresh(&handle, false).await;
+                let mut last = Instant::now();
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let mins = handle
+                        .state::<QuotaService>()
+                        .poll_mins
+                        .load(Ordering::Relaxed)
+                        .clamp(1, 10);
+                    if last.elapsed() >= Duration::from_secs(u64::from(mins) * 60) {
+                        let _ = refresh(&handle, false).await;
+                        last = Instant::now();
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
-            get_local_tokens,
             request_refresh,
-            get_diagnostics,
             get_settings,
             update_settings,
+            hide_window,
+            start_dragging,
             get_history,
             clear_history,
-            open_external_help,
-            hide_window,
+            connect_openai,
+            openai_connections,
+            resize_flyout
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("Falha ao iniciar QuotaDock");
 }

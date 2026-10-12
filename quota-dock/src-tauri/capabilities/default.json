@@ -4,7 +4,6 @@
   "description": "Capacidade padrão para a janela flyout do QuotaDock",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default"
+    "core:default"
   ]
 }
