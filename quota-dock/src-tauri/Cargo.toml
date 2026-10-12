@@ -1,8 +1,10 @@
 [package]
 name = "quota-dock"
 version = "0.3.0"
-description = "Monitor independente de limites e quotas de IA para Windows"
-authors = ["QuotaDock Team"]
+description = "Monitor de quotas das contas usadas no OpenCode para Windows"
+authors = ["entaocadu"]
+license = "MIT"
+repository = "https://github.com/entaocadu/quota-dock"
 edition = "2021"
 
 [lib]

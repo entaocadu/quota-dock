@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentação e solução de problemas
+    url: https://github.com/entaocadu/quota-dock/blob/main/docs/TROUBLESHOOTING.md
+    about: Confira configuração, autenticação, janela e requisitos.
+  - name: Reportar vulnerabilidade em privado
+    url: https://github.com/entaocadu/quota-dock/security/advisories/new
+    about: Não publique dados sensíveis ou detalhes de exploração em uma issue pública.

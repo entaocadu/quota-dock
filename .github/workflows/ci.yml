@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Windows, testes e documentação
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: quota-dock/package-lock.json
+      - name: Verificar documentação
+        run: node .github/scripts/check-docs.mjs
+      - name: Instalar dependências
+        working-directory: quota-dock
+        run: npm ci
+      - name: Testes da interface
+        working-directory: quota-dock
+        run: npm test
+      - name: TypeScript e build da interface
+        working-directory: quota-dock
+        run: npm run build
+      - name: Rust estável
+        run: rustup update stable --no-self-update
+      - name: Testes Rust no Windows
+        working-directory: quota-dock
+        run: npm run test:rust

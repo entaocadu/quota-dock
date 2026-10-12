@@ -1,0 +1,55 @@
+name: Problema no QuotaDock
+description: Reportar uma falha de leitura ou comportamento do aplicativo.
+title: "[Bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Não envie tokens, arquivos de login, bancos locais, IDs de contas ou URLs de callback.
+        Remova dados pessoais e nomes de projetos dos prints. Vulnerabilidades devem usar o canal privado indicado em SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Versão do QuotaDock
+      placeholder: "Ex.: 0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Versão do Windows
+      placeholder: "Ex.: Windows 11 x64"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Área afetada
+      options:
+        - Google / Antigravity do OpenCode
+        - OpenAI / conexão QuotaDock
+        - OpenAI / login compatível salvo
+        - Janela / bandeja / barra de tarefas
+        - Instalação / inicialização
+        - Documentação
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      description: Inclua o estado exibido e a ação realizada, sem identificar a conta.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado e resultado observado
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Prints sanitizados ou contexto adicional
+      description: Anexe somente imagens sem credenciais, identificações de conta ou nomes privados de projetos.

@@ -1,0 +1,21 @@
+name: Sugestão de melhoria
+description: Propor uma melhoria para acompanhar quotas usadas no OpenCode.
+title: "[Melhoria] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual problema no uso do OpenCode deseja resolver?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Comportamento desejado
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Fonte de quota ou referências públicas
+      description: Para novos provedores, explique de onde vêm os limites. Não inclua tokens ou dados reais de contas.
