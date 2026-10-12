@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "accounts": [
+    {
+      "email": "developer@example.com",
+      "refreshToken": "REDACTED_MOCK_SECRET_TOKEN",
+      "addedAt": 1780000000000,
+      "lastUsed": 1791750000000,
+      "enabled": true,
+      "cachedQuota": {
+        "gemini-flash": {
+          "remainingFraction": 0.42,
+          "resetTime": "2026-10-11T23:30:00Z",
+          "modelCount": 2
+        },
+        "gemini-pro": {
+          "remainingFraction": 0.85,
+          "resetTime": "2026-10-12T02:00:00Z",
+          "modelCount": 1
+        },
+        "claude": {
+          "remainingFraction": 0.15,
+          "resetTime": "2026-10-11T21:00:00Z",
+          "modelCount": 1
+        }
+      },
+      "cachedQuotaUpdatedAt": 1791752000000
+    }
+  ],
+  "activeIndex": 0
+}

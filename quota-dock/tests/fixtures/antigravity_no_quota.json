@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "accounts": [
+    {
+      "email": "empty@example.com",
+      "enabled": true
+    }
+  ]
+}

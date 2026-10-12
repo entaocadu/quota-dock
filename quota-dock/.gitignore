@@ -1,0 +1,16 @@
+# Node & Frontend
+node_modules/
+dist/
+.vite/
+
+# Rust / Tauri
+src-tauri/target/
+
+# Logs & Temp
+*.log
+*.tmp
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example

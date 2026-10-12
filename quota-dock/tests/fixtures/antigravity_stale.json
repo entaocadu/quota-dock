@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "accounts": [
+    {
+      "email": "stale.user@example.com",
+      "refreshToken": "REDACTED",
+      "enabled": true,
+      "cachedQuota": {
+        "gemini-flash": {
+          "remainingFraction": 0.50,
+          "resetTime": "2026-10-10T12:00:00Z"
+        }
+      },
+      "cachedQuotaUpdatedAt": 1780000000000
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "range": {
+    "from": 1791169200000,
+    "to": 1791752711937
+  },
+  "sessions": 1,
+  "subagents": 0,
+  "prompts": 1,
+  "steps": 46,
+  "tokens": {
+    "input": 184075,
+    "output": 2543,
+    "reasoning": 4616,
+    "cache": {
+      "read": 1796173,
+      "write": 0
+    }
+  },
+  "cost": 0,
+  "models": [
+    {
+      "model": {
+        "id": "antigravity-gemini-3.8-flash",
+        "providerID": "google",
+        "variant": "high"
+      },
+      "steps": 46,
+      "tokens": {
+        "input": 184075,
+        "output": 2543,
+        "reasoning": 4616,
+        "cache": {
+          "read": 1796173,
+          "write": 0
+        }
+      },
+      "cost": 0
+    }
+  ]
+}

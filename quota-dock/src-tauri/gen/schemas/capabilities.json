@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Capacidade padrão para a janela flyout do QuotaDock","local":true,"windows":["main"],"permissions":["core:default","opener:default"]}}
